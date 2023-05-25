@@ -23,6 +23,7 @@ from langchain.agents.agent_toolkits import (
 from langchain.agents.agent_types import AgentType
 from langchain.agents.conversational.base import ConversationalAgent
 from langchain.agents.conversational_chat.base import ConversationalChatAgent
+from langchain.agents.agent_detector.base import AgentDetector
 from langchain.agents.initialize import initialize_agent
 from langchain.agents.load_tools import (
     get_all_tool_names,
@@ -45,6 +46,7 @@ __all__ = [
     "BaseSingleActionAgent",
     "ConversationalAgent",
     "ConversationalChatAgent",
+    "AgentDetector",
     "LLMSingleActionAgent",
     "MRKLChain",
     "ReActChain",

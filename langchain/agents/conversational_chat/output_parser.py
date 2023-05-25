@@ -14,6 +14,7 @@ class ConvoOutputParser(AgentOutputParser):
 
     def parse(self, text: str) -> Union[AgentAction, AgentFinish]:
         try:
+            raise Exception("Bye")
             response = parse_json_markdown(text)
             action, action_input = response["action"], response["action_input"]
             if action == "Final Answer":

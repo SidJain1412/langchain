@@ -6,8 +6,8 @@ from typing import Any, List, Optional, Sequence, Tuple
 from pydantic import Field
 
 from langchain.agents.agent import Agent, AgentOutputParser
-from langchain.agents.conversational_chat.output_parser import ConvoOutputParser
-from langchain.agents.conversational_chat.prompt import (
+from langchain.agents.agent_detector.output_parser import ConvoOutputParser
+from langchain.agents.agent_detector.prompt import (
     PREFIX,
     SUFFIX,
     TEMPLATE_TOOL_RESPONSE,

@@ -12,6 +12,9 @@ repository = "https://www.github.com/langchain-ai/langchain"
 python = ">=3.8.1,<4.0"
 black = "^24.2.0"
 
+[tool.setuptools]
+py-modules = []
+
 [tool.poetry.group.docs.dependencies]
 langchain = { path = "libs/langchain/", develop = true }
 autodoc_pydantic = "^1.8.0"
@@ -84,9 +87,3 @@ extend-exclude = [
 # Don't require them to change at once, though we should look into them eventually.
 "cookbook/gymnasium_agent_simulation.ipynb" = ["F821"]
 "docs/docs/integrations/document_loaders/tensorflow_datasets.ipynb" = ["F821"]
-
-[tool.setuptools.packages.find]
-where = ["."]  # list of folders that contain the packages (["."] by default)
-include = ["<package name>"]  # package names should match these glob patterns (["*"] by default)
-exclude = []  # exclude packages matching these glob patterns (empty by default)
-namespaces = false  # to disable scanning PEP 420 namespaces (true by default)

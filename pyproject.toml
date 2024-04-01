@@ -12,9 +12,6 @@ repository = "https://www.github.com/langchain-ai/langchain"
 python = ">=3.8.1,<4.0"
 black = "^24.2.0"
 
-[tool.setuptools]
-py-modules = []
-
 [tool.poetry.group.docs.dependencies]
 langchain = { path = "libs/langchain/", develop = true }
 autodoc_pydantic = "^1.8.0"

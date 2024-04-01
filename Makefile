@@ -1,73 +1,71 @@
-.PHONY: all clean format lint test tests test_watch integration_tests docker_tests help extended_tests
+.PHONY: all clean help docs_build docs_clean docs_linkcheck api_docs_build api_docs_clean api_docs_linkcheck spell_check spell_fix lint lint_package lint_tests format format_diff
 
+## help: Show this help info.
+help: Makefile
+	@printf "\n\033[1mUsage: make <TARGETS> ...\033[0m\n\n\033[1mTargets:\033[0m\n\n"
+	@sed -n 's/^##//p' $< | awk -F':' '{printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' | sort | sed -e 's/^/ /'
+
+## all: Default target, shows help.
 all: help
 
-coverage:
-	poetry run pytest --cov \
-		--cov-config=.coveragerc \
-		--cov-report xml \
-		--cov-report term-missing:skip-covered
+## clean: Clean documentation and API documentation artifacts.
+clean: docs_clean api_docs_clean
 
-clean: docs_clean
+######################
+# DOCUMENTATION
+######################
 
-docs_compile:
-	poetry run nbdoc_build --srcdir $(srcdir)
-
+## docs_build: Build the documentation.
 docs_build:
-	cd docs && poetry run make html
+	docs/.local_build.sh
 
+## docs_clean: Clean the documentation build artifacts.
 docs_clean:
-	cd docs && poetry run make clean
+	@if [ -d _dist ]; then \
+		rm -r _dist; \
+		echo "Directory _dist has been cleaned."; \
+	else \
+		echo "Nothing to clean."; \
+	fi
 
+## docs_linkcheck: Run linkchecker on the documentation.
 docs_linkcheck:
-	poetry run linkchecker docs/_build/html/index.html
+	poetry run linkchecker _dist/docs/ --ignore-url node_modules
 
-format:
-	poetry run black .
-	poetry run ruff --select I --fix .
+## api_docs_build: Build the API Reference documentation.
+api_docs_build:
+	poetry run python docs/api_reference/create_api_rst.py
+	cd docs/api_reference && poetry run make html
 
-PYTHON_FILES=.
-lint: PYTHON_FILES=.
-lint_diff: PYTHON_FILES=$(shell git diff --name-only --diff-filter=d master | grep -E '\.py$$')
+## api_docs_clean: Clean the API Reference documentation build artifacts.
+api_docs_clean:
+	find ./docs/api_reference -name '*_api_reference.rst' -delete
+	cd docs/api_reference && poetry run make clean
 
-lint lint_diff:
-	poetry run mypy $(PYTHON_FILES)
-	poetry run black $(PYTHON_FILES) --check
-	poetry run ruff .
+## api_docs_linkcheck: Run linkchecker on the API Reference documentation.
+api_docs_linkcheck:
+	poetry run linkchecker docs/api_reference/_build/html/index.html
 
-TEST_FILE ?= tests/unit_tests/
+## spell_check: Run codespell on the project.
+spell_check:
+	poetry run codespell --toml pyproject.toml
 
-test:
-	poetry run pytest --disable-socket --allow-unix-socket $(TEST_FILE)
+## spell_fix: Run codespell on the project and fix the errors.
+spell_fix:
+	poetry run codespell --toml pyproject.toml -w
 
-tests: 
-	poetry run pytest --disable-socket --allow-unix-socket $(TEST_FILE)
+######################
+# LINTING AND FORMATTING
+######################
 
-extended_tests:
-	poetry run pytest --disable-socket --allow-unix-socket --only-extended tests/unit_tests
+## lint: Run linting on the project.
+lint lint_package lint_tests:
+	poetry run ruff docs templates cookbook
+	poetry run ruff format docs templates cookbook --diff
+	poetry run ruff --select I docs templates cookbook
+	git grep 'from langchain import' docs/docs templates cookbook | grep -vE 'from langchain import (hub)' && exit 1 || exit 0
 
-test_watch:
-	poetry run ptw --now . -- tests/unit_tests
-
-integration_tests:
-	poetry run pytest tests/integration_tests
-
-docker_tests:
-	docker build -t my-langchain-image:test .
-	docker run --rm my-langchain-image:test
-
-help:
-	@echo '----'
-	@echo 'coverage                     - run unit tests and generate coverage report'
-	@echo 'docs_build                   - build the documentation'
-	@echo 'docs_clean                   - clean the documentation build artifacts'
-	@echo 'docs_linkcheck               - run linkchecker on the documentation'
-	@echo 'format                       - run code formatters'
-	@echo 'lint                         - run linters'
-	@echo 'test                         - run unit tests'
-	@echo 'tests                        - run unit tests'
-	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
-	@echo 'extended_tests               - run only extended unit tests'
-	@echo 'test_watch                   - run unit tests in watch mode'
-	@echo 'integration_tests            - run integration tests'
-	@echo 'docker_tests                 - run unit tests in docker'
+## format: Format the project files.
+format format_diff:
+	poetry run ruff format docs templates cookbook
+	poetry run ruff --select I --fix docs templates cookbook

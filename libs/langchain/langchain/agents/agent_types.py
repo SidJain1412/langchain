@@ -42,7 +42,7 @@ class AgentType(str, Enum):
     """
 
     CHAT_CONVERSATIONAL_REACT_DESCRIPTION = "chat-conversational-react-description"
-
+    AGENT_DETECTOR = "agent-detector"
     STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION = (
         "structured-chat-zero-shot-react-description"
     )

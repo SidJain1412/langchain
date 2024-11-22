@@ -136,9 +136,8 @@ class PngDrawer:
         try:
             import pygraphviz as pgv  # type: ignore[import]
         except ImportError as exc:
-            raise ImportError(
-                "Install pygraphviz to draw graphs: `pip install pygraphviz`."
-            ) from exc
+            msg = "Install pygraphviz to draw graphs: `pip install pygraphviz`."
+            raise ImportError(msg) from exc
 
         # Create a directed graph
         viz = pgv.AGraph(directed=True, nodesep=0.9, ranksep=1.0)
@@ -174,7 +173,9 @@ class PngDrawer:
             graph: The graph to draw.
         """
         for start, end, data, cond in graph.edges:
-            self.add_edge(viz, start, end, str(data), cond)
+            self.add_edge(
+                viz, start, end, str(data) if data is not None else None, cond
+            )
 
     def update_styles(self, viz: Any, graph: Graph) -> None:
         """Update the styles of the entrypoint and END nodes.

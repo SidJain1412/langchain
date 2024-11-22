@@ -1,21 +1,20 @@
+from collections.abc import AsyncIterator, Iterable, Iterator, Sequence
 from datetime import datetime
 from typing import (
     Any,
-    AsyncIterator,
-    Iterable,
-    Iterator,
-    Sequence,
 )
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
+from pytest_mock import MockerFixture
 
 from langchain_core.document_loaders.base import BaseLoader
 from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
 from langchain_core.indexing import InMemoryRecordManager, aindex, index
 from langchain_core.indexing.api import _abatch, _HashedDocument
+from langchain_core.indexing.in_memory import InMemoryDocumentIndex
 from langchain_core.vectorstores import InMemoryVectorStore, VectorStore
 
 
@@ -187,11 +186,11 @@ def test_index_simple_delete_full(
     ):
         indexing_result = index(loader, record_manager, vector_store, cleanup="full")
 
-        doc_texts = set(
+        doc_texts = {
             # Ignoring type since doc should be in the store and not a None
             vector_store.get_by_ids([uid])[0].page_content  # type: ignore
             for uid in vector_store.store
-        )
+        }
         assert doc_texts == {"mutated document 1", "This is another document."}
 
         assert indexing_result == {
@@ -269,11 +268,11 @@ async def test_aindex_simple_delete_full(
             "num_updated": 0,
         }
 
-    doc_texts = set(
+    doc_texts = {
         # Ignoring type since doc should be in the store and not a None
         vector_store.get_by_ids([uid])[0].page_content  # type: ignore
         for uid in vector_store.store
-    )
+    }
     assert doc_texts == {"mutated document 1", "This is another document."}
 
     # Attempt to index again verify that nothing changes
@@ -560,11 +559,11 @@ def test_incremental_delete(
             "num_updated": 0,
         }
 
-    doc_texts = set(
+    doc_texts = {
         # Ignoring type since doc should be in the store and not a None
         vector_store.get_by_ids([uid])[0].page_content  # type: ignore
         for uid in vector_store.store
-    )
+    }
     assert doc_texts == {"This is another document.", "This is a test document."}
 
     # Attempt to index again verify that nothing changes
@@ -619,11 +618,11 @@ def test_incremental_delete(
             "num_updated": 0,
         }
 
-    doc_texts = set(
+    doc_texts = {
         # Ignoring type since doc should be in the store and not a None
         vector_store.get_by_ids([uid])[0].page_content  # type: ignore
         for uid in vector_store.store
-    )
+    }
     assert doc_texts == {
         "mutated document 1",
         "mutated document 2",
@@ -657,7 +656,7 @@ def test_incremental_indexing_with_batch_size(
     )
 
     with patch.object(
-        record_manager, "get_time", return_value=datetime(2021, 1, 2).timestamp()
+        record_manager, "get_time", return_value=datetime(2021, 1, 1).timestamp()
     ):
         assert index(
             loader,
@@ -673,6 +672,16 @@ def test_incremental_indexing_with_batch_size(
             "num_updated": 0,
         }
 
+    doc_texts = {
+        # Ignoring type since doc should be in the store and not a None
+        vector_store.get_by_ids([uid])[0].page_content  # type: ignore
+        for uid in vector_store.store
+    }
+    assert doc_texts == {"1", "2", "3", "4"}
+
+    with patch.object(
+        record_manager, "get_time", return_value=datetime(2021, 1, 2).timestamp()
+    ):
         assert index(
             loader,
             record_manager,
@@ -687,12 +696,155 @@ def test_incremental_indexing_with_batch_size(
             "num_updated": 0,
         }
 
-    doc_texts = set(
+    doc_texts = {
         # Ignoring type since doc should be in the store and not a None
         vector_store.get_by_ids([uid])[0].page_content  # type: ignore
         for uid in vector_store.store
-    )
+    }
     assert doc_texts == {"1", "2", "3", "4"}
+
+
+def test_incremental_indexing_with_batch_size_with_optimization(
+    record_manager: InMemoryRecordManager, vector_store: InMemoryVectorStore
+) -> None:
+    """Test case when batch_size < num of docs.
+
+    Here, we'll verify that an indexing optimization works as expected.
+    """
+    documents = [
+        Document(
+            page_content="1",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="2",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="3",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="4",
+            metadata={"source": "1"},
+        ),
+    ]
+
+    with patch.object(
+        record_manager, "get_time", return_value=datetime(2021, 1, 1).timestamp()
+    ):
+        assert index(
+            documents,
+            record_manager,
+            vector_store,
+            cleanup="incremental",
+            source_id_key="source",
+            batch_size=2,
+        ) == {
+            "num_added": 4,
+            "num_deleted": 0,
+            "num_skipped": 0,
+            "num_updated": 0,
+        }
+
+    doc_texts = {
+        # Ignoring type since doc should be in the store and not a None
+        vector_store.get_by_ids([uid])[0].page_content  # type: ignore
+        for uid in vector_store.store
+    }
+    assert doc_texts == {"1", "2", "3", "4"}
+
+    # Mutate content in first batch
+    doc_first_batch_mutation = [
+        Document(
+            page_content="updated 1",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="2",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="3",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="4",
+            metadata={"source": "1"},
+        ),
+    ]
+
+    with patch.object(
+        record_manager, "get_time", return_value=datetime(2021, 1, 2).timestamp()
+    ):
+        assert index(
+            doc_first_batch_mutation,
+            record_manager,
+            vector_store,
+            cleanup="incremental",
+            source_id_key="source",
+            batch_size=2,
+        ) == {
+            # Cannot optimize here since the first batch was changed
+            # So only skpping indexing the document with content "2"
+            "num_added": 3,
+            "num_deleted": 3,
+            "num_skipped": 1,
+            "num_updated": 0,
+        }
+
+    doc_texts = {
+        # Ignoring type since doc should be in the store and not a None
+        vector_store.get_by_ids([uid])[0].page_content  # type: ignore
+        for uid in vector_store.store
+    }
+    assert doc_texts == {"updated 1", "2", "3", "4"}
+
+    # Mutate content in second batch
+    doc_second_batch_mutation = [
+        Document(
+            page_content="updated 1",  # <-- This was already previously updated
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="2",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="3",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="updated 4",
+            metadata={"source": "1"},
+        ),
+    ]
+
+    with patch.object(
+        record_manager, "get_time", return_value=datetime(2021, 1, 3).timestamp()
+    ):
+        assert index(
+            doc_second_batch_mutation,
+            record_manager,
+            vector_store,
+            cleanup="incremental",
+            source_id_key="source",
+            batch_size=2,
+        ) == {
+            # Skips updating content from the first batch, only updates
+            # the `updated 4` content
+            "num_added": 1,
+            "num_deleted": 1,
+            "num_skipped": 3,
+            "num_updated": 0,
+        }
+
+    doc_texts = {
+        # Ignoring type since doc should be in the store and not a None
+        vector_store.get_by_ids([uid])[0].page_content  # type: ignore
+        for uid in vector_store.store
+    }
+    assert doc_texts == {"updated 1", "2", "3", "updated 4"}
 
 
 def test_incremental_delete_with_batch_size(
@@ -721,7 +873,7 @@ def test_incremental_delete_with_batch_size(
     )
 
     with patch.object(
-        record_manager, "get_time", return_value=datetime(2021, 1, 2).timestamp()
+        record_manager, "get_time", return_value=datetime(2021, 1, 1).timestamp()
     ):
         assert index(
             loader,
@@ -737,11 +889,11 @@ def test_incremental_delete_with_batch_size(
             "num_updated": 0,
         }
 
-    doc_texts = set(
+    doc_texts = {
         # Ignoring type since doc should be in the store and not a None
         vector_store.get_by_ids([uid])[0].page_content  # type: ignore
         for uid in vector_store.store
-    )
+    }
     assert doc_texts == {"1", "2", "3", "4"}
 
     # Attempt to index again verify that nothing changes
@@ -761,6 +913,13 @@ def test_incremental_delete_with_batch_size(
             "num_skipped": 4,
             "num_updated": 0,
         }
+
+    doc_texts = {
+        # Ignoring type since doc should be in the store and not a None
+        vector_store.get_by_ids([uid])[0].page_content  # type: ignore
+        for uid in vector_store.store
+    }
+    assert doc_texts == {"1", "2", "3", "4"}
 
     # Attempt to index again verify that nothing changes
     with patch.object(
@@ -791,9 +950,16 @@ def test_incremental_delete_with_batch_size(
             "num_updated": 0,
         }
 
+    doc_texts = {
+        # Ignoring type since doc should be in the store and not a None
+        vector_store.get_by_ids([uid])[0].page_content  # type: ignore
+        for uid in vector_store.store
+    }
+    assert doc_texts == {"1", "2", "3", "4"}
+
     # Attempt to index again verify that nothing changes
     with patch.object(
-        record_manager, "get_time", return_value=datetime(2023, 1, 3).timestamp()
+        record_manager, "get_time", return_value=datetime(2023, 1, 4).timestamp()
     ):
         # Docs with same content
         docs = [
@@ -820,9 +986,16 @@ def test_incremental_delete_with_batch_size(
             "num_updated": 0,
         }
 
+    doc_texts = {
+        # Ignoring type since doc should be in the store and not a None
+        vector_store.get_by_ids([uid])[0].page_content  # type: ignore
+        for uid in vector_store.store
+    }
+    assert doc_texts == {"1", "2", "3", "4"}
+
     # Try to index with changed docs now
     with patch.object(
-        record_manager, "get_time", return_value=datetime(2024, 1, 3).timestamp()
+        record_manager, "get_time", return_value=datetime(2024, 1, 5).timestamp()
     ):
         # Docs with same content
         docs = [
@@ -847,6 +1020,13 @@ def test_incremental_delete_with_batch_size(
             "num_skipped": 0,
             "num_updated": 0,
         }
+
+    doc_texts = {
+        # Ignoring type since doc should be in the store and not a None
+        vector_store.get_by_ids([uid])[0].page_content  # type: ignore
+        for uid in vector_store.store
+    }
+    assert doc_texts == {"changed 1", "changed 2", "3", "4"}
 
 
 async def test_aincremental_delete(
@@ -882,11 +1062,11 @@ async def test_aincremental_delete(
             "num_updated": 0,
         }
 
-    doc_texts = set(
+    doc_texts = {
         # Ignoring type since doc should be in the store and not a None
         vector_store.get_by_ids([uid])[0].page_content  # type: ignore
         for uid in vector_store.store
-    )
+    }
     assert doc_texts == {"This is another document.", "This is a test document."}
 
     # Attempt to index again verify that nothing changes
@@ -941,11 +1121,11 @@ async def test_aincremental_delete(
             "num_updated": 0,
         }
 
-    doc_texts = set(
+    doc_texts = {
         # Ignoring type since doc should be in the store and not a None
         vector_store.get_by_ids([uid])[0].page_content  # type: ignore
         for uid in vector_store.store
-    )
+    }
     assert doc_texts == {
         "mutated document 1",
         "mutated document 2",
@@ -1284,7 +1464,10 @@ def test_indexing_custom_batch_size(
 
         index(docs, record_manager, vector_store, batch_size=batch_size)
         args, kwargs = mock_add_documents.call_args
-        assert args == (docs,)
+        doc_with_id = Document(
+            id=ids[0], page_content="This is a test document.", metadata={"source": "1"}
+        )
+        assert args == ([doc_with_id],)
         assert kwargs == {"ids": ids, "batch_size": batch_size}
     finally:
         vector_store.add_documents = original  # type: ignore
@@ -1304,8 +1487,422 @@ async def test_aindexing_custom_batch_size(
 
     batch_size = 1
     mock_add_documents = AsyncMock()
+    doc_with_id = Document(
+        id=ids[0], page_content="This is a test document.", metadata={"source": "1"}
+    )
     vector_store.aadd_documents = mock_add_documents  # type: ignore
     await aindex(docs, arecord_manager, vector_store, batch_size=batch_size)
     args, kwargs = mock_add_documents.call_args
-    assert args == (docs,)
+    assert args == ([doc_with_id],)
     assert kwargs == {"ids": ids, "batch_size": batch_size}
+
+
+def test_index_into_document_index(record_manager: InMemoryRecordManager) -> None:
+    """Get an in memory index."""
+    document_index = InMemoryDocumentIndex()
+    docs = [
+        Document(
+            page_content="This is a test document.",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="This is another document.",
+            metadata={"source": "2"},
+        ),
+    ]
+
+    assert index(docs, record_manager, document_index, cleanup="full") == {
+        "num_added": 2,
+        "num_deleted": 0,
+        "num_skipped": 0,
+        "num_updated": 0,
+    }
+
+    assert index(docs, record_manager, document_index, cleanup="full") == {
+        "num_added": 0,
+        "num_deleted": 0,
+        "num_skipped": 2,
+        "num_updated": 0,
+    }
+
+    assert index(
+        docs, record_manager, document_index, cleanup="full", force_update=True
+    ) == {
+        "num_added": 0,
+        "num_deleted": 0,
+        "num_skipped": 0,
+        "num_updated": 2,
+    }
+
+    assert index([], record_manager, document_index, cleanup="full") == {
+        "num_added": 0,
+        "num_deleted": 2,
+        "num_skipped": 0,
+        "num_updated": 0,
+    }
+
+
+async def test_aindex_into_document_index(
+    arecord_manager: InMemoryRecordManager,
+) -> None:
+    """Get an in memory index."""
+    document_index = InMemoryDocumentIndex()
+    docs = [
+        Document(
+            page_content="This is a test document.",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="This is another document.",
+            metadata={"source": "2"},
+        ),
+    ]
+
+    assert await aindex(docs, arecord_manager, document_index, cleanup="full") == {
+        "num_added": 2,
+        "num_deleted": 0,
+        "num_skipped": 0,
+        "num_updated": 0,
+    }
+
+    assert await aindex(docs, arecord_manager, document_index, cleanup="full") == {
+        "num_added": 0,
+        "num_deleted": 0,
+        "num_skipped": 2,
+        "num_updated": 0,
+    }
+    assert await aindex(
+        docs, arecord_manager, document_index, cleanup="full", force_update=True
+    ) == {
+        "num_added": 0,
+        "num_deleted": 0,
+        "num_skipped": 0,
+        "num_updated": 2,
+    }
+
+    assert await aindex([], arecord_manager, document_index, cleanup="full") == {
+        "num_added": 0,
+        "num_deleted": 2,
+        "num_skipped": 0,
+        "num_updated": 0,
+    }
+
+
+async def test_incremental_aindexing_with_batch_size_with_optimization(
+    arecord_manager: InMemoryRecordManager, vector_store: InMemoryVectorStore
+) -> None:
+    """Test case when batch_size < num of docs.
+
+    Here, we'll verify that an indexing optimization works as expected.
+    """
+    documents = [
+        Document(
+            page_content="1",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="2",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="3",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="4",
+            metadata={"source": "1"},
+        ),
+    ]
+
+    with patch.object(
+        arecord_manager, "get_time", return_value=datetime(2021, 1, 1).timestamp()
+    ):
+        assert await aindex(
+            documents,
+            arecord_manager,
+            vector_store,
+            cleanup="incremental",
+            source_id_key="source",
+            batch_size=2,
+        ) == {
+            "num_added": 4,
+            "num_deleted": 0,
+            "num_skipped": 0,
+            "num_updated": 0,
+        }
+
+    doc_texts = {
+        # Ignoring type since doc should be in the store and not a None
+        vector_store.get_by_ids([uid])[0].page_content  # type: ignore
+        for uid in vector_store.store
+    }
+    assert doc_texts == {"1", "2", "3", "4"}
+
+    # Mutate content in first batch
+    doc_first_batch_mutation = [
+        Document(
+            page_content="updated 1",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="2",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="3",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="4",
+            metadata={"source": "1"},
+        ),
+    ]
+
+    with patch.object(
+        arecord_manager, "get_time", return_value=datetime(2021, 1, 2).timestamp()
+    ):
+        assert await aindex(
+            doc_first_batch_mutation,
+            arecord_manager,
+            vector_store,
+            cleanup="incremental",
+            source_id_key="source",
+            batch_size=2,
+        ) == {
+            # Cannot optimize here since the first batch was changed
+            # So only skpping indexing the document with content "2"
+            "num_added": 3,
+            "num_deleted": 3,
+            "num_skipped": 1,
+            "num_updated": 0,
+        }
+
+    doc_texts = {
+        # Ignoring type since doc should be in the store and not a None
+        vector_store.get_by_ids([uid])[0].page_content  # type: ignore
+        for uid in vector_store.store
+    }
+    assert doc_texts == {"updated 1", "2", "3", "4"}
+
+    # Mutate content in second batch
+    doc_second_batch_mutation = [
+        Document(
+            page_content="updated 1",  # <-- This was already previously updated
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="2",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="3",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="updated 4",
+            metadata={"source": "1"},
+        ),
+    ]
+
+    with patch.object(
+        arecord_manager, "get_time", return_value=datetime(2021, 1, 3).timestamp()
+    ):
+        assert await aindex(
+            doc_second_batch_mutation,
+            arecord_manager,
+            vector_store,
+            cleanup="incremental",
+            source_id_key="source",
+            batch_size=2,
+        ) == {
+            # Skips updating content from the first batch, only updates
+            # the `updated 4` content
+            "num_added": 1,
+            "num_deleted": 1,
+            "num_skipped": 3,
+            "num_updated": 0,
+        }
+
+    doc_texts = {
+        # Ignoring type since doc should be in the store and not a None
+        vector_store.get_by_ids([uid])[0].page_content  # type: ignore
+        for uid in vector_store.store
+    }
+    assert doc_texts == {"updated 1", "2", "3", "updated 4"}
+
+
+def test_index_with_upsert_kwargs(
+    record_manager: InMemoryRecordManager, upserting_vector_store: InMemoryVectorStore
+) -> None:
+    """Test indexing with upsert_kwargs parameter."""
+    mock_add_documents = MagicMock()
+
+    with patch.object(upserting_vector_store, "add_documents", mock_add_documents):
+        docs = [
+            Document(
+                page_content="Test document 1",
+                metadata={"source": "1"},
+            ),
+            Document(
+                page_content="Test document 2",
+                metadata={"source": "2"},
+            ),
+        ]
+
+        upsert_kwargs = {"vector_field": "embedding"}
+
+        index(docs, record_manager, upserting_vector_store, upsert_kwargs=upsert_kwargs)
+
+        # Assert that add_documents was called with the correct arguments
+        mock_add_documents.assert_called_once()
+        call_args = mock_add_documents.call_args
+        assert call_args is not None
+        args, kwargs = call_args
+
+        # Check that the documents are correct (ignoring ids)
+        assert len(args[0]) == 2
+        assert all(isinstance(doc, Document) for doc in args[0])
+        assert [doc.page_content for doc in args[0]] == [
+            "Test document 1",
+            "Test document 2",
+        ]
+        assert [doc.metadata for doc in args[0]] == [{"source": "1"}, {"source": "2"}]
+
+        # Check that ids are present
+        assert "ids" in kwargs
+        assert isinstance(kwargs["ids"], list)
+        assert len(kwargs["ids"]) == 2
+
+        # Check other arguments
+        assert kwargs["batch_size"] == 100
+        assert kwargs["vector_field"] == "embedding"
+
+
+def test_index_with_upsert_kwargs_for_document_indexer(
+    record_manager: InMemoryRecordManager,
+    mocker: MockerFixture,
+) -> None:
+    """Test that kwargs are passed to the upsert method of the document indexer."""
+
+    document_index = InMemoryDocumentIndex()
+    upsert_spy = mocker.spy(document_index.__class__, "upsert")
+    docs = [
+        Document(
+            page_content="This is a test document.",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="This is another document.",
+            metadata={"source": "2"},
+        ),
+    ]
+
+    upsert_kwargs = {"vector_field": "embedding"}
+
+    assert index(
+        docs,
+        record_manager,
+        document_index,
+        cleanup="full",
+        upsert_kwargs=upsert_kwargs,
+    ) == {
+        "num_added": 2,
+        "num_deleted": 0,
+        "num_skipped": 0,
+        "num_updated": 0,
+    }
+
+    assert upsert_spy.call_count == 1
+    # assert call kwargs were passed as kwargs
+    assert upsert_spy.call_args.kwargs == upsert_kwargs
+
+
+async def test_aindex_with_upsert_kwargs_for_document_indexer(
+    arecord_manager: InMemoryRecordManager,
+    mocker: MockerFixture,
+) -> None:
+    """Test that kwargs are passed to the upsert method of the document indexer."""
+
+    document_index = InMemoryDocumentIndex()
+    upsert_spy = mocker.spy(document_index.__class__, "aupsert")
+    docs = [
+        Document(
+            page_content="This is a test document.",
+            metadata={"source": "1"},
+        ),
+        Document(
+            page_content="This is another document.",
+            metadata={"source": "2"},
+        ),
+    ]
+
+    upsert_kwargs = {"vector_field": "embedding"}
+
+    assert await aindex(
+        docs,
+        arecord_manager,
+        document_index,
+        cleanup="full",
+        upsert_kwargs=upsert_kwargs,
+    ) == {
+        "num_added": 2,
+        "num_deleted": 0,
+        "num_skipped": 0,
+        "num_updated": 0,
+    }
+
+    assert upsert_spy.call_count == 1
+    # assert call kwargs were passed as kwargs
+    assert upsert_spy.call_args.kwargs == upsert_kwargs
+
+
+async def test_aindex_with_upsert_kwargs(
+    arecord_manager: InMemoryRecordManager, upserting_vector_store: InMemoryVectorStore
+) -> None:
+    """Test async indexing with upsert_kwargs parameter."""
+    mock_aadd_documents = AsyncMock()
+
+    with patch.object(upserting_vector_store, "aadd_documents", mock_aadd_documents):
+        docs = [
+            Document(
+                page_content="Async test document 1",
+                metadata={"source": "1"},
+            ),
+            Document(
+                page_content="Async test document 2",
+                metadata={"source": "2"},
+            ),
+        ]
+
+        upsert_kwargs = {"vector_field": "embedding"}
+
+        await aindex(
+            docs,
+            arecord_manager,
+            upserting_vector_store,
+            upsert_kwargs=upsert_kwargs,
+        )
+
+        # Assert that aadd_documents was called with the correct arguments
+        mock_aadd_documents.assert_called_once()
+        call_args = mock_aadd_documents.call_args
+        assert call_args is not None
+        args, kwargs = call_args
+
+        # Check that the documents are correct (ignoring ids)
+        assert len(args[0]) == 2
+        assert all(isinstance(doc, Document) for doc in args[0])
+        assert [doc.page_content for doc in args[0]] == [
+            "Async test document 1",
+            "Async test document 2",
+        ]
+        assert [doc.metadata for doc in args[0]] == [{"source": "1"}, {"source": "2"}]
+
+        # Check that ids are present
+        assert "ids" in kwargs
+        assert isinstance(kwargs["ids"], list)
+        assert len(kwargs["ids"]) == 2
+
+        # Check other arguments
+        assert kwargs["batch_size"] == 100
+        assert kwargs["vector_field"] == "embedding"

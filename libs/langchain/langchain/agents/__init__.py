@@ -33,7 +33,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from langchain_core._api.path import as_import_path
-from langchain_core.tools import Tool, tool
+from langchain_core.tools import Tool
+from langchain_core.tools.convert import tool
 
 from langchain._api import create_importer
 from langchain.agents.agent import (
@@ -154,7 +155,6 @@ __all__ = [
     "ReActTextWorldAgent",
     "SelfAskWithSearchChain",
     "StructuredChatAgent",
-    "Tool",
     "ZeroShotAgent",
     "create_json_agent",
     "create_openapi_agent",
@@ -169,7 +169,6 @@ __all__ = [
     "load_agent",
     "load_huggingface_tool",
     "load_tools",
-    "tool",
     "XMLAgent",
     "create_openai_functions_agent",
     "create_xml_agent",
@@ -179,4 +178,6 @@ __all__ = [
     "create_json_chat_agent",
     "create_structured_chat_agent",
     "create_tool_calling_agent",
+    "Tool",
+    "tool",
 ]

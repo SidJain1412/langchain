@@ -112,7 +112,7 @@ def test__convert_dict_to_message_tool_call() -> None:
                 name="GenerateUsername",
                 args="oops",
                 id="call_wm0JY6CdwOMZ4eTxHWUThDNz",
-                error="Function GenerateUsername arguments:\n\noops\n\nare not valid JSON. Received JSONDecodeError Expecting value: line 1 column 1 (char 0)",  # noqa: E501
+                error="Function GenerateUsername arguments:\n\noops\n\nare not valid JSON. Received JSONDecodeError Expecting value: line 1 column 1 (char 0)\nFor troubleshooting, visit: https://python.langchain.com/docs/troubleshooting/errors/OUTPUT_PARSING_FAILURE ",  # noqa: E501
                 type="invalid_tool_call",
             ),
         ],
@@ -173,7 +173,7 @@ def test_groq_invoke(mock_completion: dict) -> None:
     ):
         res = llm.invoke("bar")
         assert res.content == "Bar Baz"
-        assert type(res) == AIMessage
+        assert type(res) is AIMessage
     assert completed
 
 
@@ -195,7 +195,7 @@ async def test_groq_ainvoke(mock_completion: dict) -> None:
     ):
         res = await llm.ainvoke("bar")
         assert res.content == "Bar Baz"
-        assert type(res) == AIMessage
+        assert type(res) is AIMessage
     assert completed
 
 

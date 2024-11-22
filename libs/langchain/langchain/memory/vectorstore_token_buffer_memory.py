@@ -13,8 +13,8 @@ from typing import Any, Dict, List
 
 from langchain_core.messages import BaseMessage
 from langchain_core.prompts.chat import SystemMessagePromptTemplate
-from langchain_core.pydantic_v1 import Field, PrivateAttr
 from langchain_core.vectorstores import VectorStoreRetriever
+from pydantic import Field, PrivateAttr
 
 from langchain.memory import ConversationTokenBufferMemory, VectorStoreRetrieverMemory
 from langchain.memory.chat_memory import BaseChatMemory
@@ -67,7 +67,7 @@ class ConversationVectorStoreTokenBufferMemory(ConversationTokenBufferMemory):
         from langchain.memory.token_buffer_vectorstore_memory import (
                 ConversationVectorStoreTokenBufferMemory
         )
-        from langchain_community.vectorstores import Chroma
+        from langchain_chroma import Chroma
         from langchain_community.embeddings import HuggingFaceInstructEmbeddings
         from langchain_openai import OpenAI
 

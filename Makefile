@@ -31,19 +31,21 @@ docs_linkcheck:
 api_docs_build:
 	poetry run python docs/api_reference/create_api_rst.py
 	cd docs/api_reference && poetry run make html
+	poetry run python docs/api_reference/scripts/custom_formatter.py docs/api_reference/_build/html/
 
 API_PKG ?= text-splitters
 
 api_docs_quick_preview:
-	poetry run pip install "pydantic<2"
 	poetry run python docs/api_reference/create_api_rst.py $(API_PKG)
 	cd docs/api_reference && poetry run make html
-	open docs/api_reference/_build/html/$(shell echo $(API_PKG) | sed 's/-/_/g')_api_reference.html
+	poetry run python docs/api_reference/scripts/custom_formatter.py docs/api_reference/_build/html/
+	open docs/api_reference/_build/html/reference.html
 
 ## api_docs_clean: Clean the API Reference documentation build artifacts.
 api_docs_clean:
 	find ./docs/api_reference -name '*_api_reference.rst' -delete
 	git clean -fdX ./docs/api_reference
+	rm docs/api_reference/index.md
 	
 
 ## api_docs_linkcheck: Run linkchecker on the API Reference documentation.
@@ -64,12 +66,12 @@ spell_fix:
 
 ## lint: Run linting on the project.
 lint lint_package lint_tests:
-	poetry run ruff check docs templates cookbook
-	poetry run ruff format docs templates cookbook --diff
-	poetry run ruff check --select I docs templates cookbook
-	git grep 'from langchain import' docs/docs templates cookbook | grep -vE 'from langchain import (hub)' && exit 1 || exit 0
+	poetry run ruff check docs cookbook
+	poetry run ruff format docs cookbook cookbook --diff
+	poetry run ruff check --select I docs cookbook
+	git grep 'from langchain import' docs/docs cookbook | grep -vE 'from langchain import (hub)' && exit 1 || exit 0
 
 ## format: Format the project files.
 format format_diff:
-	poetry run ruff format docs templates cookbook
-	poetry run ruff check --select I --fix docs templates cookbook
+	poetry run ruff format docs cookbook
+	poetry run ruff check --select I --fix docs cookbook
